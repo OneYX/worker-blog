@@ -20,7 +20,7 @@
 
 　　Quartz核心元素之间的关系如图1.1所示：
 
-![gif](./images/001.gif)
+![gif](images/001.gif)
 
 图1.1 核心元素关系图
 
@@ -28,7 +28,7 @@
 
 　　在Quartz中，有两类线程，Scheduler调度线程和任务执行线程，其中任务执行线程通常使用一个线程池维护一组线程。
 
-![gif](./images/002.gif)
+![gif](images/002.gif)
 
 图1.2 Quartz线程视图
 
@@ -44,7 +44,7 @@
 
 　　一个Quartz集群中的每个节点是一个独立的Quartz应用，它又管理着其他的节点。这就意味着你必须对每个节点分别启动或停止。Quartz集群中，独立的Quartz节点并不与另一其的节点或是管理节点通信，而是通过相同的数据库表来感知到另一Quartz应用的，如图2.1所示。
 
-![img](./images/003.png)
+![img](images/003.png)
 
 图2.1 Quartz集群架构
 
@@ -52,11 +52,11 @@
 
 　　因为Quartz集群依赖于数据库，所以必须首先创建Quartz数据库表，Quartz发布包中包括了所有被支持的数据库平台的SQL脚本。这些SQL脚本存放于<quartz_home>/docs/dbTables 目录下。这里采用的Quartz 1.8.4版本，总共12张表，不同版本，表个数可能不同。数据库为mysql，用tables_mysql.sql创建数据库表。全部表如图2.2所示，对这些表的简要介绍如图2.3所示。
 
-![img](./images/004.png)
+![img](images/004.png)
 
 图2.2 Quartz 1.8.4在mysql数据库中生成的表
 
-![img](./images/005.png)
+![img](images/005.png)
 
 图2.3 Quartz数据表简介
 
@@ -106,7 +106,7 @@
 
 　　说明：tables_oracle.sql里有相应的dml初始化，如图2.4所示。
 
-![img](./images/006.png)
+![img](images/006.png)
 
 图2.4 Quartz权限信息表中的初始化信息
 
@@ -257,7 +257,7 @@ public class Test implements Serializable{
 
 　　我们采用单独使用Quartz来实现其集群功能，代码结构及所需的第三方jar包如图3.1所示。其中，Mysql版本：5.1.52，Mysql驱动版本：mysql-connector-java-5.1.5-bin.jar（针对于5.1.52，建议采用该版本驱动，因为Quartz存在BUG使得其与某些Mysql驱动结合时不能正常运行）。
 
- ![img](https://images0.cnblogs.com/blog2015/704717/201508/241856517966963.x-png)
+ ![img](https:images0.cnblogs.com/blog2015/704717/201508/241856517966963.x-png)
 
 图4.1 Quartz集群工程结构及所需第三方jar包
 
@@ -435,7 +435,7 @@ public class SimpleRecoveryJob implements Job, Serializable {
 
 　　运行ServerA，结果如图4.2所示。
 
-![img](./images/007.png)
+![img](images/007.png)
 
 图4.2 ServerA运行结果1
 
@@ -443,19 +443,19 @@ public class SimpleRecoveryJob implements Job, Serializable {
 
 　　开启ServerB后，ServerA与ServerB的输出如图4.3、4.4所示。
 
-![img](./images/008.png)
+![img](images/008.png)
 
 图4.3 ServerA运行结果2
 
  
 
-![img](./images/009.png)
+![img](images/009.png)
 
 图4.4 ServerB运行结果1
 
 　　从图4.3、4.4可以看出，ServerB开启后，系统自动实现了负责均衡，ServerB接手Job1。关断ServerA后，ServerB的运行结果如图4.5所示。
 
-![img](./images/010.png)
+![img](images/010.png)
 
 图4.5 ServerB运行结果2
 
