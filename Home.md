@@ -1,478 +1,241 @@
-# 1、Quartz任务调度的基本实现原理
+> 本文出处：http://beautyboss.farbox.com/post/dts/quartzfen-xiang
+### 背景
 
-　　Quartz是OpenSymphony开源组织在任务调度领域的一个开源项目，完全基于Java实现。作为一个优秀的开源调度框架，Quartz具有以下特点：
+这是去年(18年)6月份在团队内部做的一个Quartz分享，记录在[原来的博客](http://beautyboss.farbox.com/)上，现同步到新的博客上。
 
-　　　　（1）强大的调度功能，例如支持丰富多样的调度方法，可以满足各种常规及特殊需求；
+### What
 
-　　　　（2）灵活的应用方式，例如支持任务和调度的多种组合方式，支持调度数据的多种存储方式；
+#### 简单介绍
 
-　　　　（3）分布式和集群能力，Terracotta收购后在原来功能基础上作了进一步提升。本文将对该部分相加阐述。
+Quartz是由OpenSymphony公司开源的一个定时任务调度框架，完全由Java开发。有以下的特点:
 
-## 1.1 Quartz 核心元素
+1. 强大的调度功能。支持丰富多样的调度方法，可以满足各种常规及特殊需求。
+2. 灵活的应用方式。支持任务和调度的多种组合方式，支持调度数据的多种存储方式。
+3. 分布式和集群能力。
+4. 容易与其他框架集成，使用简单。
 
-　　Quartz任务调度的核心元素为：Scheduler——任务调度器、Trigger——触发器、Job——任务。其中trigger和job是任务调度的元数据，scheduler是实际执行调度的控制器。
+Quartz支持几乎以下所有的触发方式
 
-　　**Trigger**是用于定义调度时间的元素，即按照什么时间规则去执行任务。Quartz中主要提供了四种类型的trigger：SimpleTrigger，CronTirgger，DateIntervalTrigger，和NthIncludedDayTrigger。这四种trigger可以满足企业应用中的绝大部分需求。
+- 在一天中的任意时刻（可以精确到毫秒）。
+- 一周中特定的一些天。
+- 一个月中特定的一些天。
+- 一年中特定的一些天。
+- 不在日历列表中注册的一些天（比如节假日）。
+- 循环特定的次数。
+- 无限循环。
+- 按照一定的时间间隔循环。 #### 核心元素
 
-　　**Job**用于表示被调度的任务。主要有两种类型的job：无状态的（stateless）和有状态的（stateful）。对于同一个trigger来说，有状态的job不能被并行执行，只有上一次触发的任务被执行完之后，才能触发下一次执行。Job主要有两种属性：volatility和durability，其中volatility表示任务是否被持久化到数据库存储，而durability表示在没有trigger关联的时候任务是否被保留。两者都是在值为true的时候任务被持久化或保留。一个job可以被多个trigger关联，但是一个trigger只能关联一个job。
+1. `Scheduler`:任务调度器，是实际执行任务调度的控制器，常用的有`StdScheduler`。
 
-　　**Scheduler**由scheduler工厂创建：DirectSchedulerFactory或者StdSchedulerFactory。第二种工厂StdSchedulerFactory使用较多，因为DirectSchedulerFactory使用起来不够方便，需要作许多详细的手工编码设置。Scheduler主要有三种：RemoteMBeanScheduler，RemoteScheduler和StdScheduler。
+2. `SchedulerFactory`:`Scheduler`工厂类，用来生成`Scheduler`,有`DirectSchedulerFactory`和`StdSchedulerFactory`两种，常用的是`StdSchedulerFactory`。
 
-　　Quartz核心元素之间的关系如图1.1所示：
+3. `Trigger`:触发器，用于定义任务调度的时间规则，有：
 
-![gif](images/001.gif)
+   - `SimpleTrigger`：指定从某一个时间开始，以一定的时间间隔（单位是毫秒）执行任务。它适合的任务类似于：9:00 开始，每隔1小时，每隔几分钟，每隔几秒钟执行一次。
+   - `CalandarIntervalTrigger`：类似于`SimpleTrigger`，指定从某一个时间开始，以一定的时间间隔执行任务。 区别：`SimpleTrigger`只支持时间间隔的单位为ms，`CalandarIntervalTrigger`支持的间隔单位有秒，分钟，小时，天，星期，月，年。不用自己去转换成毫秒。支持不是固定长度的间隔。比如间隔为月和年。缺点是经度只能支持到秒。
+   - `DailyTimeIntervalTrigger`：指定每天的每个时间段内，以一定的时间间隔执行任务，并且可以支持指定星期。
+   - `CronTrigger`。支持cron表达式。
+   - `NthIncludedDayTrigger`：每一间隔类型的第几天执行任务。
 
-图1.1 核心元素关系图
+4. `Job`:是一个接口，开发者自定义的任务只需要实现这个接口，接口只有一个方法`void execute(JobExecutionContext context);`。
+   `JobExecutionContext`提供了调度上下文的各种信息。
+   有两种类型的`Job`:无状态(stateless)的和有状态(stateful)，默认是无状态的，需要用`@DisallowConcurrentExecution`注解变成有状态的。
+   对同一个`Trigger`来说，有状态的任务不能被并行，只有上一次被触发的任务执行完成之后才可以执行。
+   `Job`主要有两种属性：`volatility`和`durability`，其中`volatility`表示任务是否被持久化到数据库存储，而`durability`表示在没有`trigger`关联的时候任务是否被保留。两者都是在值为 true 的时候任务被持久化或保留。
+   一个`job`可以被多个`trigger`关联，但是一个`trigger`只能关联一个`job`。
+   ![关系图.png](images/011.png)
 
-## 1.2 Quartz 线程视图
+5. `JobDetail`:用来描述`Job`实现类及其相关的静态信息`Job`名字、
+   实现类，关联监听器等信息。`Job`运行时的数据保存在`JobDataMap`中。
 
-　　在Quartz中，有两类线程，Scheduler调度线程和任务执行线程，其中任务执行线程通常使用一个线程池维护一组线程。
+6. `Calendar`:它是一些日历特定时间点的集合。一个`Trigger`可以包含多个`Calendar`，以便排除或包含某些特定时间点。
 
-![gif](images/002.gif)
+7. `JobStore`:`JobStore`负责保存跟踪所有提交给`Scheduler`的数据，包括`Jobs`、`Triggers`、`Calendar`等。`Quartz`中包含两种`JobStore`:
 
-图1.2 Quartz线程视图
+   - `RAMJobStore`:数据保存在内存中，速度快，但是不能持久化，应用结束之后数据丢失。
+   - `JDBCJobStore`:数据保存在数据库中，数据不会丢失。速度比`RAMJobStore`慢，配置复杂。 ` org.quartz.jobStore.class: org.quartz.simpl.RAMJobStore `
 
-　　Scheduler调度线程主要有两个：执行常规调度的线程，和执行misfiredtrigger的线程。常规调度线程轮询存储的所有trigger，如果有需要触发的trigger，即到达了下一次触发的时间，则从任务执行线程池获取一个空闲线程，执行与该trigger关联的任务。Misfire线程是扫描所有的trigger，查看是否有misfiredtrigger，如果有的话根据misfire的策略分别处理(**fire now** OR **wait for the next fire**)。
+8. `Misfire`
 
-## 1.3 Quartz Job数据存储
+   1. 定义 当一个持久的触发器因为调度器被关闭或者线程池中没有可用的线程而错过了机会时间，就被称为触发失败(misfire)。
 
-　　Quartz中的trigger和job需要存储下来才能被使用。Quartz中有两种存储方式：RAMJobStore,JobStoreSupport，其中RAMJobStore是将trigger和job存储在内存中，而JobStoreSupport是基于jdbc将trigger和job存储到数据库中。RAMJobStore的存取速度非常快，但是由于其在系统被停止后所有的数据都会丢失，所以在集群应用中，必须使用JobStoreSupport。
+   2. 如何判定。 配置文件(quartz.properties)中会配置一个`misfire threshold`，默认是60s，如果一个任务超时时间超过这个配置的值，则认为`misfire`。比如: 一个定时任务，从13:07:24开始执行，每隔3s执行一次， 13:33:36 13:33:39 13:33:42 13:33:45 13:33:48 13:33:51 第一次执行时间为11s 13:33:36 --> 13:33:47,跟换计划的13:33:39相差8s misfireThreshold <= 8 --> misfire **任务的延时是会累加的。**
 
-# 2、Quartz集群原理
+   3. 如何处理。
+      `MisfireInstructions`告诉`Scheduler`如何处理`misfire`任务，不同的`Trigger`处理规则不同,默认是`Trigger.MISFIRE_INSTRUCTION_SMART_POLICY`。
 
-## 2.1 Quartz 集群架构
+      1. `CronTrigger`
 
-　　一个Quartz集群中的每个节点是一个独立的Quartz应用，它又管理着其他的节点。这就意味着你必须对每个节点分别启动或停止。Quartz集群中，独立的Quartz节点并不与另一其的节点或是管理节点通信，而是通过相同的数据库表来感知到另一Quartz应用的，如图2.1所示。
+         - `withMisfireHandlingInstructionIgnoreMisfires`:所有`misfire`的任务会马上执行。
+         - `withMisfireHandlingInstructionDoNothing`:所有的`misfire`不管，执行下一个周期的任务。
+         - `withMisfireHandlingInstructionFireAndProceed`:会合并部分的`misfire`，正常执行下一个周期的任务。
 
-![img](images/003.png)
+         假设一个任务，周一至周五上午9点~18点，每隔一个小时执行一次，8:30点系统挂了，10:15恢复，则9点、10点的misfire了。
+         - `withMisfireHandlingInstructionIgnoreMisfires`:9点，10点的misfire都会被立马执行。
+         - `withMisfireHandlingInstructionDoNothing`:忽略
+         - `withMisfireHandlingInstructionFireAndProceed`:9点10点的合在一起，只会执行一次。
+         - `SimpleTrigger`
+9. 为什么要使用`JobDetail`而不是直接使用`Job`
 
-图2.1 Quartz集群架构
+### How
 
-## 2.2 Quartz集群相关数据库表
-
-　　因为Quartz集群依赖于数据库，所以必须首先创建Quartz数据库表，Quartz发布包中包括了所有被支持的数据库平台的SQL脚本。这些SQL脚本存放于<quartz_home>/docs/dbTables 目录下。这里采用的Quartz 1.8.4版本，总共12张表，不同版本，表个数可能不同。数据库为mysql，用tables_mysql.sql创建数据库表。全部表如图2.2所示，对这些表的简要介绍如图2.3所示。
-
-![img](images/004.png)
-
-图2.2 Quartz 1.8.4在mysql数据库中生成的表
-
-![img](images/005.png)
-
-图2.3 Quartz数据表简介
-
-### 2.2.1 调度器状态表（QRTZ_SCHEDULER_STATE）
-
-　　**说明：**集群中节点实例信息，Quartz定时读取该表的信息判断集群中每个实例的当前状态。
-
-　　**instance_name****：**配置文件中org.quartz.scheduler.instanceId配置的名字，如果设置为AUTO,quartz会根据物理机名和当前时间产生一个名字。
-
-　　**last_checkin_time****：**上次检入时间
-
-　　**checkin_interval****：**检入间隔时间
-
-### 2.2.2 触发器与任务关联表（qrtz_fired_triggers）
-
-　　存储与已触发的Trigger相关的状态信息，以及相联Job的执行信息。
-
-### 2.2.3 触发器信息表（qrtz_triggers)
-
-　　**trigger_name****：**trigger的名字,该名字用户自己可以随意定制,无强行要求
-
-　　**trigger_group****：**trigger所属组的名字,该名字用户自己随意定制,无强行要求
-
-　　**job_name****：**qrtz_job_details表job_name的外键
-
-　　**job_group****：**qrtz_job_details表job_group的外键
-
-　　**trigger_state****：**当前trigger状态设置为ACQUIRED,如果设为WAITING,则job不会触发
-
-　　**trigger_cron****：**触发器类型,使用cron表达式
-
-### 2.2.4 任务详细信息表（qrtz_job_details）
-
-　　**说明：**保存job详细信息,该表需要用户根据实际情况初始化
-
-　　**job_name****：**集群中job的名字,该名字用户自己可以随意定制,无强行要求。
-
-　　**job_group****：**集群中job的所属组的名字,该名字用户自己随意定制,无强行要求。
-
-　　**job_class_name****：**集群中job实现类的完全包名,quartz就是根据这个路径到classpath找到该job类的。
-
-　　**is_durable****：**是否持久化,把该属性设置为1，quartz会把job持久化到数据库中
-
-　　**job_data****：**一个blob字段，存放持久化job对象。
-
-### 2.2.5权限信息表（qrtz_locks）
-
-　　说明：tables_oracle.sql里有相应的dml初始化，如图2.4所示。
-
-![img](images/006.png)
-
-图2.4 Quartz权限信息表中的初始化信息
-
-## 2.3 Quartz Scheduler在集群中的启动流程
-
-　　Quartz Scheduler自身是察觉不到被集群的，只有配置给Scheduler的JDBC JobStore才知道。当Quartz Scheduler启动时，它调用JobStore的**schedulerStarted**()方法，它告诉JobStore Scheduler已经启动了。schedulerStarted() 方法是在**JobStoreSupport**类中实现的。JobStoreSupport类会根据**quartz.properties**文件中的设置来确定Scheduler实例是否参与到集群中。假如配置了集群，一个新的**ClusterManager**类的实例就被创建、初始化并启动。ClusterManager是在JobStoreSupport类中的一个内嵌类，继承了java.lang.Thread，它会定期运行，并对Scheduler实例执行检入的功能。Scheduler也要查看是否有任何一个别的集群节点失败了。检入操作执行周期在quartz.properties中配置。
-
-## 2.4 侦测失败的Scheduler节点
-
-　　当一个Scheduler实例执行检入时，它会查看是否有其他的Scheduler实例在到达他们所预期的时间还未检入。这是通过检查SCHEDULER_STATE表中Scheduler记录在LAST_CHEDK_TIME列的值是否早于org.quartz.jobStore.clusterCheckinInterval来确定的。如果一个或多个节点到了预定时间还没有检入，那么运行中的Scheduler就假定它(们) 失败了。
-
-## 2.5 从故障实例中恢复Job
-
-　　当一个Sheduler实例在执行某个Job时失败了，有可能由另一正常工作的Scheduler实例接过这个Job重新运行。要实现这种行为，配置给JobDetail对象的Job可恢复属性必须设置为true（job.setRequestsRecovery(true)）。如果可恢复属性被设置为false(默认为false)，当某个Scheduler在运行该job失败时，它将不会重新运行；而是由另一个Scheduler实例在下一次触发时间触发。Scheduler实例出现故障后多快能被侦测到取决于每个Scheduler的检入间隔（即2.3中提到的org.quartz.jobStore.clusterCheckinInterval）。
-
-# 3、Quartz集群实例(Quartz+Spring)
-
-## 3.1 Spring不兼容Quartz问题
-
-　　Spring从2.0.2开始便不再支持Quartz。具体表现在 Quartz+Spring 把 Quartz 的 Task 实例化进入数据库时，会产生： Serializable 的错误：
 ```
-<bean id="jobtask" class="org.springframework.scheduling.quartz. MethodInvokingJobDetailFactoryBean ">
-　　<property name="targetObject">
-　　　　<ref bean="quartzJob"/>
-　　</property>
-　　<property name="targetMethod">
-　　　　<value>execute</value>
-　　</property>
-</bean>
-```
-　　这个 MethodInvokingJobDetailFactoryBean 类中的 methodInvoking 方法，是不支持序列化的，因此在把 QUARTZ 的 TASK 序列化进入数据库时就会抛错。
+  public class HelloJob implements Job{
 
-　　首先解决MethodInvokingJobDetailFactoryBean的问题，在不修改Spring源码的情况下，可以避免使用这个类，直接调用JobDetail。但是使用JobDetail实现，需要自己实现MothodInvoking的逻辑，可以使用JobDetail的jobClass和JobDataAsMap属性来自定义一个Factory(Manager)来实现同样的目的。例如，本示例中新建了一个MyDetailQuartzJobBean来实现这个功能。
-
-## 3.2 MyDetailQuartzJobBean.java文件
-```
-package org.lxh.mvc.jobbean;
-
-import java.lang.reflect.Method;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.scheduling.quartz.QuartzJobBean;
-
-public class MyDetailQuartzJobBean extends QuartzJobBean {
-    protected final Log logger = LogFactory.getLog(getClass());
-    private String targetObject;
-    private String targetMethod;
-    private ApplicationContext ctx;
-    protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
-        try {
-            logger.info("execute [" + targetObject + "] at once>>>>>>");
-            Object otargetObject = ctx.getBean(targetObject);
-            Method m = null;
-            try {
-                m = otargetObject.getClass().getMethod(targetMethod, new Class[] {});
-                m.invoke(otargetObject, new Object[] {});
-            } catch (SecurityException e) {
-                logger.error(e);
-            } catch (NoSuchMethodException e) {
-                logger.error(e);
-            }
-        } catch (Exception e) {
-            throw new JobExecutionException(e);
-        }
+    @Override
+    public void execute(JobExecutionContext context) throws JobExecutionException {
+        JobDetail jobDetail = context.getJobDetail();
+        String param = jobDetail.getJobDataMap().getString("param"); // 从JobDataMap中获取数据
+        System.out.println(">>>>>>>> param:" + param);
     }
 
-    public void setApplicationContext(ApplicationContext applicationContext){
-        this.ctx=applicationContext;
-    }
+}
+public class Main {
 
-    public void setTargetObject(String targetObject) {
-        this.targetObject = targetObject;
-    }
+    public static void main(String[] args) throws SchedulerException, InterruptedException {
 
-    public void setTargetMethod(String targetMethod) {
-        this.targetMethod = targetMethod;
+        // 1. 创建Scheduler
+        Scheduler scheduler = StdSchedulerFactory.getDefaultScheduler();
+
+        // 2. 创建JobDetail
+        JobDetail jobDetail = newJob(HelloJob.class) // 定义job类真正的执行类
+                .withIdentity("JobName","JobGroup") // 定义name/group
+                .usingJobData("param","Hello World") // 定义属性，保存在JobDataMap中
+                .build();
+
+        // 3. 创建Trigger,定义触发规则
+        Trigger trigger = newTrigger()
+                .withIdentity("CronTriggerName","CronTriggerGroup")
+                .withSchedule(CronScheduleBuilder.cronSchedule("*/5 * * * * ?")) //  cron表达式，每5s执行一次
+                .startNow() // 一旦加入scheduler，立即生效
+                .build();
+
+        // 4. 把job和trigger注册到Scheduler中
+        scheduler.scheduleJob(jobDetail,trigger);
+
+        // 5. 启动调度器
+        scheduler.start();
+
+        Thread.sleep(100000);
+
+        // 6. 停止调度
+        scheduler.start();
+    }
+}
+```
+
+### Why
+
+#### 几个核心类
+
+##### `Scheduler`
+
+接口，定义了`Quartz`中调度器的重要功能。
+
+##### `StdScheduler`
+
+最常用的`Scheduler`,实现了`Scheduler`接口由`StdSchedulerFactory.getDefaultScheduler()`方法获取，在这个过程中，间接的调用了`instantiate()`方法，这个方法完成了框架所有组件的创建和初始化。
+
+##### `QuartzScheduler`
+
+`QuartzScheduler`中封装了对框架的大部分操作,`StdScheduler`中所有的方法都是调用`QuartzScheduler`中的方法的实现。
+
+##### `QuartzSchedulerThread`
+
+继承自`Thread`，是`Quartz`的心脏，它的`run()`方法是整个调度的核心，在`run()`方法中会循环去`JobStore`中查找最早执行的`trigger`，并异步的执行对应的任务。
+
+##### `JobRunShell`
+
+继承自`Runnable`，它是对一个需要执行的`job`实现类的封装， 在`QuartzSchedulerThread#run`方法创建，并调用线程池中的线程去执行，在它的`initialize(QuartzScheduler sched)`方法中，用反射生成了`job`类，`run`方法是一个job被执行的逻辑。
+
+##### `SimpleThreadPool`
+
+是默认的线程池，它有一个内部类`WorkerThread`继承自`Thread`，每一个`WorkerThread`类代表线程池中的一个线程。通过`SimpleThreadPool#runInThread`方法提供异步处理。
+
+##### `QuartzSchedulerResources`
+
+这个类保存了所有的运行时资源，包括`ThreadPool`，`JobStore`等。
+
+##### `JobStore`
+
+给`QuartzScheduler`提供了`Job`和`Trigger`的存储机制，默认使用`RAMJobStore`，数据保存在内存中，配置了数据库时，所有的数据库操作封装在了`JobStoreSupport`中。
+
+#### `Quartz`启动时序图
+
+![Quartz启动时序图.jpeg](images/012.jpeg)
+
+#### 线程模型
+
+`Quartz`中有两类线程:`Scheduler`调度线程和任务执行线程。其中任务执行线程是个线程池。
+`Scheduler`调度线程有两类: 执行常规调度的线程，和执行misfired trigger(JDBCJobStore才有)的线程。
+
+![线程视图.png](images/013.png)
+
+#### `QuartzSchedulerThread`
+
+`QuartzSchedulerThread`是`Scheduler`的核心，是一个单独的线程，不断轮询查找下次待执行的任务，并把任务交给任务执行线程去执行。
+
+![QuartzSchedulerThread流程图](images/014.png)
+
+#### `SimpleThreadPool`
+
+![5-SimpleThreadPool.jpeg](images/015.jpeg)
+
+![线程关系](images/016.png)
+
+#### `JobRunShell`
+
+`JobRunShell`是对要执行的`Job`的封装，由`SimpleThreadPool`执行。
+
+![6-JobRunShell.png](images/017.png)
+
+#### `RAMJobStore`(看代码)
+
+### Practise
+
+基于`Quartz`实现一个简单的任务调度系统。
+
+![7.png](images/018.png)
+
+#### `AmQuartzJob`注解
+
+```
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Component
+public @interface AmQuartzJob {
+
+    String name(); // job名称
+
+    String group() default "DEFAULT";
+
+    String cronExp(); // cron表达式
+
+    String type() default "single"; // 执行类型
+}
+```
+
+#### `ClusterJob`
+
+```
+public abstract class ClusterJob extends QuartzJobBean implements StatefulJob,InterruptableJob,ApplicationContextAware,InitializingBean {
+  protected abstract void clusterExecute(JobExecutionContext context) throws JobExecutionException;
+}
+```
+
+#### `demo`
+
+```
+@AmQuartzJob(name = "testJob",cronExp = "0,10,20,30,40,50 * * * * ?")
+public class TestJob extends ClusterJob{
+
+    @Override
+    protected void clusterExecute(JobExecutionContext context) throws JobExecutionException {
+        System.out.println(">>>>>>>> Hello World");
     }
 
 }
 ```
 
-## 3.3真正的Job实现类
-
-　　在Test类中，只是简单实现了打印系统当前时间的功能。
-```
-package org.lxh.mvc.job;
-import java.io.Serializable;
-import java.util.Date;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
-public class Test implements Serializable{
-    private Log logger = LogFactory.getLog(Test.class);
-    private static final long serialVersionUID = -2073310586499744415L;  
-    public void execute () {
-        Date date=new Date();  
-        System.out.println(date.toLocaleString());  
-    }
-    
-}
-```
-## 3.4 配置quartz.xml文件
-```
-<bean id="Test" class="org.lxh.mvc.job.Test" scope="prototype">
-    </bean>
-
-    <bean id="TestjobTask" class="org.springframework.scheduling.quartz.JobDetailBean">
-        <property name="jobClass">
-            <value>org.lxh.mvc.jobbean.MyDetailQuartzJobBean</value>
-        </property>
-        <property name="jobDataAsMap">
-            <map>
-                <entry key="targetObject" value="Test" />
-                <entry key="targetMethod" value="execute" />
-             </map>
-         </property> 
-     </bean>
-    
-    <bean name="TestTrigger" class="org.springframework.scheduling.quartz.CronTriggerBean">  
-        <property name="jobDetail" ref="TestjobTask" />
-        <property name="cronExpression" value="0/1 * * * * ?" />
-    </bean> 
-    
-<bean id="quartzScheduler"
-    class="org.springframework.scheduling.quartz.SchedulerFactoryBean">
-        <property name="configLocation" value="classpath:quartz.properties"/>
-        <property name="triggers">
-            <list>
-                <ref bean="TestTrigger" />
-            </list>
-        </property>
-        <property name="applicationContextSchedulerContextKey" value="applicationContext" />
-    </bean>        
-```
-## 3.5 测试
-
-　　ServerA、ServerB的代码、配置完全一样，先启动ServerA，后启动ServerB，当Server关断之后，ServerB会监测到其关闭，并将ServerA上正在执行的Job接管，继续执行。
-
-# 4、Quartz集群实例（单独Quartz）
-
-　　尽管我们已经实现了Spring+Quartz的集群配置，但是因为Spring与Quartz之间的兼容问题还是不建议使用该方式。在本小节中，我们实现了单独用Quartz配置的集群，相对Spring+Quartz的方式来说，简单、稳定。
-
-## 4.1 工程结构
-
-　　我们采用单独使用Quartz来实现其集群功能，代码结构及所需的第三方jar包如图3.1所示。其中，Mysql版本：5.1.52，Mysql驱动版本：mysql-connector-java-5.1.5-bin.jar（针对于5.1.52，建议采用该版本驱动，因为Quartz存在BUG使得其与某些Mysql驱动结合时不能正常运行）。
-
- ![img](https:images0.cnblogs.com/blog2015/704717/201508/241856517966963.x-png)
-
-图4.1 Quartz集群工程结构及所需第三方jar包
-
-　　其中quartz.properties为Quartz配置文件，放在src目录下，若无该文件，Quartz将自动加载jar包中的quartz.properties文件；SimpleRecoveryJob.java、SimpleRecoveryStatefulJob.java为两个Job；ClusterExample.java中编写了调度信息、触发机制及相应的测试main函数。
-
-## 4.2 配置文件quartz.properties
-
-　　默认文件名称quartz.properties，通过设置"org.quartz.jobStore.isClustered"属性为"true"来激活集群特性。在集群中的每一个实例都必须有一个唯一的"instance id" ("org.quartz.scheduler.instanceId" 属性), 但是应该有相同的"scheduler instance name" ("org.quartz.scheduler.instanceName")，也就是说集群中的每一个实例都必须使用相同的quartz.properties 配置文件。除了以下几种例外，配置文件的内容其他都必须相同：
-
-　　a.线程池大小。
-
-　　b.不同的"org.quartz.scheduler.instanceId"属性值（通过设定为"AUTO"即可）。
-```
-#==============================================================  
-#Configure Main Scheduler Properties  
-#==============================================================   
-org.quartz.scheduler.instanceName = quartzScheduler
-org.quartz.scheduler.instanceId = AUTO
-
-#==============================================================  
-#Configure JobStore  
-#============================================================== 
-org.quartz.jobStore.class = org.quartz.impl.jdbcjobstore.JobStoreTX
-org.quartz.jobStore.driverDelegateClass = org.quartz.impl.jdbcjobstore.StdJDBCDelegate
-org.quartz.jobStore.tablePrefix = QRTZ_
-org.quartz.jobStore.isClustered = true
-org.quartz.jobStore.clusterCheckinInterval = 10000  
-org.quartz.jobStore.dataSource = myDS
- 
-#==============================================================  
-#Configure DataSource  
-#============================================================== 
-org.quartz.dataSource.myDS.driver = com.mysql.jdbc.Driver
-org.quartz.dataSource.myDS.URL = jdbc:mysql://192.168.31.18:3306/test?useUnicode=true&amp;characterEncoding=UTF-8
-org.quartz.dataSource.myDS.user = root
-org.quartz.dataSource.myDS.password = 123456
-org.quartz.dataSource.myDS.maxConnections = 30
-
-#==============================================================  
-#Configure ThreadPool  
-#============================================================== 
-org.quartz.threadPool.class = org.quartz.simpl.SimpleThreadPool
-org.quartz.threadPool.threadCount = 5
-org.quartz.threadPool.threadPriority = 5
-org.quartz.threadPool.threadsInheritContextClassLoaderOfInitializingThread = true
-```
-## 4.3 ClusterExample.java文件
-```
-package cluster;
-import java.util.Date;
-import org.quartz.JobDetail;
-import org.quartz.Scheduler;
-import org.quartz.SchedulerFactory;
-import org.quartz.SimpleTrigger;
-import org.quartz.impl.StdSchedulerFactory;
-public class ClusterExample {
-   
-    public void cleanUp(Scheduler inScheduler) throws Exception {
-        System.out.println("***** Deleting existing jobs/triggers *****");
-        // unschedule jobs
-        String[] groups = inScheduler.getTriggerGroupNames();
-        for (int i = 0; i < groups.length; i++) {
-            String[] names = inScheduler.getTriggerNames(groups[i]);
-            for (int j = 0; j < names.length; j++) {
-                inScheduler.unscheduleJob(names[j], groups[i]);
-            }
-        }
-        // delete jobs
-        groups = inScheduler.getJobGroupNames();
-        for (int i = 0; i < groups.length; i++) {
-            String[] names = inScheduler.getJobNames(groups[i]);
-            for (int j = 0; j < names.length; j++) {
-                inScheduler.deleteJob(names[j], groups[i]);
-            }
-        }
-    }
-       
-    public void run(boolean inClearJobs, boolean inScheduleJobs) 
-        throws Exception {
-        // First we must get a reference to a scheduler
-        SchedulerFactory sf = new StdSchedulerFactory();
-        Scheduler sched = sf.getScheduler();
-       
-        if (inClearJobs) {
-            cleanUp(sched);
-        }
-        System.out.println("------- Initialization Complete -----------");
-        if (inScheduleJobs) {
-            System.out.println("------- Scheduling Jobs ------------------");
-            String schedId = sched.getSchedulerInstanceId();
-            int count = 1;
-            JobDetail job = new JobDetail("job_" + count, schedId, SimpleRecoveryJob.class);
-            // ask scheduler to re-execute this job if it was in progress when
-            // the scheduler went down...
-            job.setRequestsRecovery(true);
-            SimpleTrigger trigger = 
-                new SimpleTrigger("triger_" + count, schedId, 200, 1000L);
-            trigger.setStartTime(new Date(System.currentTimeMillis() + 1000L));
-            System.out.println(job.getFullName() +
-                    " will run at: " + trigger.getNextFireTime() +  
-                    " and repeat: " + trigger.getRepeatCount() + 
-                    " times, every " + trigger.getRepeatInterval() / 1000 + " seconds");
-            sched.scheduleJob(job, trigger);
-            count++;
-            job = new JobDetail("job_" + count, schedId, 
-                    SimpleRecoveryStatefulJob.class);
-            // ask scheduler to re-execute this job if it was in progress when
-            // the scheduler went down...
-            job.setRequestsRecovery(false);
-            trigger = new SimpleTrigger("trig_" + count, schedId, 100, 2000L);
-            trigger.setStartTime(new Date(System.currentTimeMillis() + 2000L));
-            System.out.println(job.getFullName() +
-                    " will run at: " + trigger.getNextFireTime() +  
-                    " and repeat: " + trigger.getRepeatCount() + 
-                    " times, every " + trigger.getRepeatInterval() / 1000 + " seconds");
-            sched.scheduleJob(job, trigger);
-        }
-        // jobs don't start firing until start() has been called...
-        System.out.println("------- Starting Scheduler ---------------");
-        sched.start();
-        System.out.println("------- Started Scheduler ----------------");
-        System.out.println("------- Waiting for one hour... ----------");
-        try {
-            Thread.sleep(3600L * 1000L);
-        } catch (Exception e) {
-        }
-        System.out.println("------- Shutting Down --------------------");
-        sched.shutdown();
-        System.out.println("------- Shutdown Complete ----------------");
-        }
-   
-    public static void main(String[] args) throws Exception {
-        boolean clearJobs = true;
-        boolean scheduleJobs = true;
-        for (int i = 0; i < args.length; i++) {
-            if (args[i].equalsIgnoreCase("clearJobs")) {
-                clearJobs = true;                
-            } else if (args[i].equalsIgnoreCase("dontScheduleJobs")) {
-                scheduleJobs = false;
-            }
-        }
-        ClusterExample example = new ClusterExample();
-        example.run(clearJobs, scheduleJobs);
-    }
-}
-```
-## 4.4 SimpleRecoveryJob.java
-```
-package cluster;
-
-import java.io.Serializable;
-import java.util.Date;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
-//如果有想反复执行的动作，作业，任务就把相关的代码写在execute这个方法里，前提：实现Job这个接口
-//至于SimpleJob这个类什么时候实例化，execute这个方法何时被调用，我们不用关注，交给Quartz
-public class SimpleRecoveryJob implements Job, Serializable {
-    private static Log _log = LogFactory.getLog(SimpleRecoveryJob.class);
-    public SimpleRecoveryJob() {
-    }
-    public void execute(JobExecutionContext context)
-        throws JobExecutionException {
-     //这个作业只是简单的打印出作业名字和此作业运行的时间
-        String jobName = context.getJobDetail().getFullName();
-        System.out.println("JOB 1111111111111111111 SimpleRecoveryJob says: " + jobName + " executing at " + new Date());
-    }
-}
-```
-## 4.5 运行结果
-
-　　Server A与Server B中的配置和代码完全一样。运行方法：运行任意主机上的ClusterExample.java，将任务加入调度，观察运行结果：
-
-　　运行ServerA，结果如图4.2所示。
-
-![img](images/007.png)
-
-图4.2 ServerA运行结果1
-
-　　
-
-　　开启ServerB后，ServerA与ServerB的输出如图4.3、4.4所示。
-
-![img](images/008.png)
-
-图4.3 ServerA运行结果2
-
- 
-
-![img](images/009.png)
-
-图4.4 ServerB运行结果1
-
-　　从图4.3、4.4可以看出，ServerB开启后，系统自动实现了负责均衡，ServerB接手Job1。关断ServerA后，ServerB的运行结果如图4.5所示。
-
-![img](images/010.png)
-
-图4.5 ServerB运行结果2
-
-　　从图4.5中可以看出，ServerB可以检测出ServerA丢失，将其负责的任务Job2接手，并将ServerA丢失到Server检测出这段异常时间中需要执行的Job2重新执行了。
-
-# 5、注意事项
-
-## 5.1 时间同步问题
-
-　　Quartz实际并不关心你是在相同还是不同的机器上运行节点。当集群放置在不同的机器上时，称之为水平集群。节点跑在同一台机器上时，称之为垂直集群。对于垂直集群，存在着单点故障的问题。这对高可用性的应用来说是无法接受的，因为一旦机器崩溃了，所有的节点也就被终止了。对于水平集群，存在着时间同步问题。
-
-　　节点用时间戳来通知其他实例它自己的最后检入时间。假如节点的时钟被设置为将来的时间，那么运行中的Scheduler将再也意识不到那个结点已经宕掉了。另一方面，如果某个节点的时钟被设置为过去的时间，也许另一节点就会认定那个节点已宕掉并试图接过它的Job重运行。最简单的同步计算机时钟的方式是使用某一个Internet时间服务器(Internet Time Server ITS)。
-
-## 5.2 节点争抢Job问题
-
-　　因为Quartz使用了一个随机的负载均衡算法， Job以随机的方式由不同的实例执行。Quartz官网上提到当前，还不存在一个方法来指派(钉住) 一个 Job 到集群中特定的节点。
-
-## 5.3 从集群获取Job列表问题
-
-　　当前，如果不直接进到数据库查询的话，还没有一个简单的方式来得到集群中所有正在执行的Job列表。请求一个Scheduler实例，将只能得到在那个实例上正运行Job的列表。Quartz官网建议可以通过写一些访问数据库JDBC代码来从相应的表中获取全部的Job信息。
+![8.jpeg](images/019.jpeg)
