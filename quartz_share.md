@@ -1,7 +1,7 @@
 > 本文出处：http://beautyboss.farbox.com/post/dts/quartzfen-xiang
 ### 背景
 
-这是去年(18年)6月份在团队内部做的一个Quartz分享，记录在[原来的博客](http://beautyboss.farbox.com/)上，现同步到新的博客上。
+这是去年(18年)6月份在团队内部做的一个Quartz分享，记录在[原来的博客](http://beautyboss.farbox.com/)上，现同步到新的博客上。
 
 ### What
 
